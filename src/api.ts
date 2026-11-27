@@ -1,3 +1,4 @@
+import { localStore } from './localStore.ts';
 import type {
   AppSettings,
   AuthStatus,
@@ -32,6 +33,26 @@ export function setStoredToken(token: string | null): void {
   }
 }
 
+let backendAvailablePromise: Promise<boolean> | null = null;
+
+async function isBackendAvailable(): Promise<boolean> {
+  if (backendAvailablePromise) return backendAvailablePromise;
+  backendAvailablePromise = (async () => {
+    try {
+      const res = await fetch('/api/health', { cache: 'no-store' });
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        return false;
+      }
+      const json = (await res.json()) as { status?: string };
+      return json?.status === 'ok';
+    } catch {
+      return false;
+    }
+  })();
+  return backendAvailablePromise;
+}
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
@@ -48,11 +69,14 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    data = { error: text || 'Unexpected server response' };
+    data = { error: 'Server returned an unexpected response.' };
   }
 
   if (!res.ok) {
-    const errObj = data as { error?: string; duplicate?: { id: string; serialNumber: number; vplNumber: string } };
+    const errObj = data as {
+      error?: string;
+      duplicate?: { id: string; serialNumber: number; vplNumber: string };
+    };
     const err = new Error(errObj.error || `Request failed (${res.status})`) as Error & {
       status?: number;
       duplicate?: { id: string; serialNumber: number; vplNumber: string };
@@ -76,105 +100,145 @@ export interface BootstrapResponse {
 }
 
 export const api = {
-  getAuthStatus: () => request<AuthStatus>('/api/auth/status'),
-  login: (password: string) =>
-    request<{ ok: boolean; token: string | null }>('/api/auth/login', {
+  getAuthStatus: async (): Promise<AuthStatus> => {
+    if (!(await isBackendAvailable())) return localStore.getAuthStatus();
+    return request<AuthStatus>('/api/auth/status');
+  },
+  login: async (password: string) => {
+    if (!(await isBackendAvailable())) return localStore.login(password);
+    return request<{ ok: boolean; token: string | null }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ password }),
-    }),
-  logout: () =>
-    request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
-  updatePassword: (payload: {
+    });
+  },
+  logout: async () => {
+    if (!(await isBackendAvailable())) return localStore.logout();
+    return request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
+  },
+  updatePassword: async (payload: {
     enable: boolean;
     currentPassword?: string;
     newPassword?: string;
-  }) =>
-    request<{ ok: boolean; passwordEnabled: boolean; token: string | null }>(
+  }) => {
+    if (!(await isBackendAvailable())) return localStore.updatePassword(payload);
+    return request<{ ok: boolean; passwordEnabled: boolean; token: string | null }>(
       '/api/auth/password',
       {
         method: 'POST',
         body: JSON.stringify(payload),
       },
-    ),
+    );
+  },
 
-  bootstrap: () => request<BootstrapResponse>('/api/bootstrap'),
+  bootstrap: async () => {
+    if (!(await isBackendAvailable())) return localStore.bootstrap();
+    return request<BootstrapResponse>('/api/bootstrap');
+  },
 
-  createTransaction: (
+  createTransaction: async (
     data: TransactionInput & { allowDuplicateVpl?: boolean },
-  ) =>
-    request<Transaction>('/api/transactions', {
+  ) => {
+    if (!(await isBackendAvailable())) return localStore.createTransaction(data);
+    return request<Transaction>('/api/transactions', {
       method: 'POST',
       body: JSON.stringify(data),
-    }),
-  updateTransaction: (
+    });
+  },
+  updateTransaction: async (
     id: string,
     data: TransactionInput & { allowDuplicateVpl?: boolean },
-  ) =>
-    request<Transaction>(`/api/transactions/${encodeURIComponent(id)}`, {
+  ) => {
+    if (!(await isBackendAvailable())) return localStore.updateTransaction(id, data);
+    return request<Transaction>(`/api/transactions/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    }),
-  deleteTransaction: (id: string) =>
-    request<{ ok: boolean }>(`/api/transactions/${encodeURIComponent(id)}`, {
+    });
+  },
+  deleteTransaction: async (id: string) => {
+    if (!(await isBackendAvailable())) return localStore.deleteTransaction(id);
+    return request<{ ok: boolean }>(`/api/transactions/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-    }),
-  recalculateTransactions: () =>
-    request<{ ok: boolean; recalculatedCount: number }>(
+    });
+  },
+  recalculateTransactions: async () => {
+    if (!(await isBackendAvailable())) return localStore.recalculateTransactions();
+    return request<{ ok: boolean; recalculatedCount: number }>(
       '/api/transactions/recalculate',
       { method: 'POST' },
-    ),
+    );
+  },
 
-  updateCustomer: (
+  updateCustomer: async (
     id: string,
     data: { name: string; mobileNumber: string; address: string; notes?: string },
-  ) =>
-    request<Customer>(`/api/customers/${encodeURIComponent(id)}`, {
+  ) => {
+    if (!(await isBackendAvailable())) return localStore.updateCustomer(id, data);
+    return request<Customer>(`/api/customers/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    }),
-  deleteCustomer: (id: string) =>
-    request<{ ok: boolean }>(`/api/customers/${encodeURIComponent(id)}`, {
+    });
+  },
+  deleteCustomer: async (id: string) => {
+    if (!(await isBackendAvailable())) return localStore.deleteCustomer(id);
+    return request<{ ok: boolean }>(`/api/customers/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-    }),
+    });
+  },
 
-  createExpense: (data: ExpenseInput) =>
-    request<Expense>('/api/expenses', {
+  createExpense: async (data: ExpenseInput) => {
+    if (!(await isBackendAvailable())) return localStore.createExpense(data);
+    return request<Expense>('/api/expenses', {
       method: 'POST',
       body: JSON.stringify(data),
-    }),
-  updateExpense: (id: string, data: ExpenseInput) =>
-    request<Expense>(`/api/expenses/${encodeURIComponent(id)}`, {
+    });
+  },
+  updateExpense: async (id: string, data: ExpenseInput) => {
+    if (!(await isBackendAvailable())) return localStore.updateExpense(id, data);
+    return request<Expense>(`/api/expenses/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    }),
-  deleteExpense: (id: string) =>
-    request<{ ok: boolean }>(`/api/expenses/${encodeURIComponent(id)}`, {
+    });
+  },
+  deleteExpense: async (id: string) => {
+    if (!(await isBackendAvailable())) return localStore.deleteExpense(id);
+    return request<{ ok: boolean }>(`/api/expenses/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-    }),
+    });
+  },
 
-  updateSettings: (data: Partial<AppSettings>) =>
-    request<AppSettings>('/api/settings', {
+  updateSettings: async (data: Partial<AppSettings>) => {
+    if (!(await isBackendAvailable())) return localStore.updateSettings(data);
+    return request<AppSettings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
-    }),
+    });
+  },
 
-  createBackup: (label?: string) =>
-    request<{ metadata: BackupMetadata; payload: BackupPayload }>('/api/backups', {
+  createBackup: async (label?: string) => {
+    if (!(await isBackendAvailable())) return localStore.createBackup(label);
+    return request<{ metadata: BackupMetadata; payload: BackupPayload }>('/api/backups', {
       method: 'POST',
       body: JSON.stringify({ label }),
-    }),
-  downloadBackup: (id: string) =>
-    request<BackupPayload>(`/api/backups/${encodeURIComponent(id)}/download`),
-  deleteBackup: (id: string) =>
-    request<{ ok: boolean }>(`/api/backups/${encodeURIComponent(id)}`, {
+    });
+  },
+  downloadBackup: async (id: string) => {
+    if (!(await isBackendAvailable())) return localStore.downloadBackup(id);
+    return request<BackupPayload>(`/api/backups/${encodeURIComponent(id)}/download`);
+  },
+  deleteBackup: async (id: string) => {
+    if (!(await isBackendAvailable())) return localStore.deleteBackup(id);
+    return request<{ ok: boolean }>(`/api/backups/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-    }),
-  restoreBackup: (input: { backupId?: string; payload?: BackupPayload }) =>
-    request<{
+    });
+  },
+  restoreBackup: async (input: { backupId?: string; payload?: BackupPayload }) => {
+    if (!(await isBackendAvailable())) return localStore.restoreBackup(input);
+    return request<{
       ok: boolean;
       restored: { transactions: number; customers: number; expenses: number };
     }>('/api/backups/restore', {
       method: 'POST',
       body: JSON.stringify(input),
-    }),
+    });
+  },
 };

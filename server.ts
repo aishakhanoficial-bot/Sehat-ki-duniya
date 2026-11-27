@@ -109,6 +109,7 @@ db.exec(`
     passwordEnabled INTEGER NOT NULL DEFAULT 0,
     passwordHash TEXT NOT NULL DEFAULT '',
     passwordSalt TEXT NOT NULL DEFAULT '',
+    passwordConfigured INTEGER NOT NULL DEFAULT 0,
     lastBackupAt TEXT,
     updatedAt TEXT NOT NULL
   );
@@ -163,22 +164,40 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+try {
+  db.exec('ALTER TABLE settings ADD COLUMN passwordConfigured INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // column already exists
+}
+
 function ensureDefaultSettings(): void {
-  const existing = db.prepare('SELECT id FROM settings WHERE id = ?').get('default');
+  const existing = db
+    .prepare('SELECT id, passwordHash, passwordConfigured FROM settings WHERE id = ?')
+    .get('default') as
+    | { id: string; passwordHash: string; passwordConfigured: number }
+    | undefined;
   if (!existing) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = hashPassword('1231235', salt);
     db.prepare(`
       INSERT INTO settings (
         id, businessName, businessUrduName, businessPhone, businessEmail, businessAddress,
         businessLogo, currency, enableExchangeRate, exchangeRate, targetCurrency,
         dateFormat, language, profitFormula, remainingFormula, naffaFormula,
-        passwordEnabled, passwordHash, passwordSalt, lastBackupAt, updatedAt
+        passwordEnabled, passwordHash, passwordSalt, passwordConfigured, lastBackupAt, updatedAt
       ) VALUES (
         'default', 'Sehat Ki Duniya', 'صحت کی دنیا', '', '', '',
         '', 'PKR', 0, 1, 'USD',
         'YYYY-MM-DD', 'bilingual', 'invoice_minus_real', 'invoice_plus_parcel_minus_vasool', 'proportional_invoice_capped',
-        0, '', '', NULL, ?
+        1, ?, ?, 1, NULL, ?
       )
-    `).run(nowIso());
+    `).run(hash, salt, nowIso());
+  } else if (!existing.passwordConfigured && !existing.passwordHash) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = hashPassword('1231235', salt);
+    db.prepare(
+      'UPDATE settings SET passwordEnabled = 1, passwordHash = ?, passwordSalt = ?, passwordConfigured = 1, updatedAt = ? WHERE id = ?',
+    ).run(hash, salt, nowIso(), 'default');
   }
 }
 
@@ -421,7 +440,7 @@ async function createAppServer(): Promise<void> {
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = hashPassword(newPassword, salt);
       db.prepare(
-        'UPDATE settings SET passwordEnabled = 1, passwordHash = ?, passwordSalt = ?, updatedAt = ? WHERE id = ?',
+        'UPDATE settings SET passwordEnabled = 1, passwordHash = ?, passwordSalt = ?, passwordConfigured = 1, updatedAt = ? WHERE id = ?',
       ).run(hash, salt, nowIso(), 'default');
 
       // Issue a fresh session for current client so they aren't logged out immediately
@@ -436,7 +455,7 @@ async function createAppServer(): Promise<void> {
       return;
     } else {
       db.prepare(
-        'UPDATE settings SET passwordEnabled = 0, passwordHash = ?, passwordSalt = ?, updatedAt = ? WHERE id = ?',
+        'UPDATE settings SET passwordEnabled = 0, passwordHash = ?, passwordSalt = ?, passwordConfigured = 1, updatedAt = ? WHERE id = ?',
       ).run('', '', nowIso(), 'default');
       db.prepare('DELETE FROM sessions').run();
       res.json({ ok: true, passwordEnabled: false, token: null });
