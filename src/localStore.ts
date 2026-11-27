@@ -32,6 +32,7 @@ interface LocalDatabase {
   passwordHash: string;
   passwordSalt: string;
   passwordConfigured: boolean;
+  profitFormulaMigratedV2?: boolean;
   backups: LocalBackupEntry[];
 }
 
@@ -88,7 +89,7 @@ function createInitialDb(): LocalDatabase {
       targetCurrency: 'USD',
       dateFormat: 'YYYY-MM-DD',
       language: 'bilingual',
-      profitFormula: 'invoice_minus_real',
+      profitFormula: 'invoice_minus_real_minus_parcel',
       remainingFormula: 'invoice_plus_parcel_minus_vasool',
       naffaFormula: 'proportional_invoice_capped',
       passwordEnabled: true,
@@ -98,6 +99,7 @@ function createInitialDb(): LocalDatabase {
     passwordHash: '',
     passwordSalt: '',
     passwordConfigured: false,
+    profitFormulaMigratedV2: true,
     backups: [],
   };
 }
@@ -139,12 +141,43 @@ async function loadDb(): Promise<LocalDatabase> {
     db = createInitialDb();
   }
 
+  let changed = false;
   if (!db.passwordConfigured) {
     const salt = randomHex(16);
     db.passwordSalt = salt;
     db.passwordHash = await sha256Hex(`${salt}:${DEFAULT_PASSCODE}`);
     db.settings.passwordEnabled = true;
     db.passwordConfigured = true;
+    changed = true;
+  }
+
+  if (!db.profitFormulaMigratedV2) {
+    db.settings.profitFormula = 'invoice_minus_real_minus_parcel';
+    const ts = new Date().toISOString();
+    for (const tx of db.transactions) {
+      const metrics = calculateTransactionMetrics(
+        {
+          realAmount: tx.realAmount,
+          invoiceAmount: tx.invoiceAmount,
+          parcelCharges: tx.parcelCharges,
+          vasool: tx.vasool,
+        },
+        {
+          profitFormula: db.settings.profitFormula,
+          remainingFormula: db.settings.remainingFormula,
+          naffaFormula: db.settings.naffaFormula,
+        },
+      );
+      tx.profit = metrics.profit;
+      tx.naffaVasool = metrics.naffaVasool;
+      tx.remainingAmount = metrics.remainingAmount;
+      tx.updatedAt = ts;
+    }
+    db.profitFormulaMigratedV2 = true;
+    changed = true;
+  }
+
+  if (changed) {
     saveDb(db);
   }
 
@@ -292,7 +325,7 @@ export const localStore = {
   async bootstrap(): Promise<BootstrapResponse> {
     const db = await loadDb();
     const sortedTx = [...db.transactions].sort(
-      (a, b) => b.date.localeCompare(a.date) || b.serialNumber - a.serialNumber,
+      (a, b) => a.serialNumber - b.serialNumber,
     );
     const sortedCust = [...db.customers].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),

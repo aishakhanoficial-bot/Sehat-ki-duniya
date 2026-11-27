@@ -179,7 +179,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     },
   ];
 
-  const recentTransactions = transactions.slice(0, 8);
+  const recentTransactions = transactions.slice(-8);
   const liveTimeStr = now.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',

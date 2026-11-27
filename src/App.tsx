@@ -55,7 +55,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   targetCurrency: 'USD',
   dateFormat: 'YYYY-MM-DD',
   language: 'bilingual',
-  profitFormula: 'invoice_minus_real',
+  profitFormula: 'invoice_minus_real_minus_parcel',
   remainingFormula: 'invoice_plus_parcel_minus_vasool',
   naffaFormula: 'proportional_invoice_capped',
   passwordEnabled: false,

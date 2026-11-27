@@ -426,11 +426,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(e) => setProfitFormula(e.target.value as ProfitFormula)}
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
               >
-                <option value="invoice_minus_real">
-                  Invoice Amount − Real Amount (Default)
-                </option>
                 <option value="invoice_minus_real_minus_parcel">
-                  Invoice − Real − Parcel Charges
+                  Invoice − Real − Parcel Charges (Default)
+                </option>
+                <option value="invoice_minus_real">
+                  Invoice Amount − Real Amount
                 </option>
               </select>
             </div>

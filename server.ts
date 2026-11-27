@@ -103,13 +103,14 @@ db.exec(`
     targetCurrency TEXT NOT NULL DEFAULT 'USD',
     dateFormat TEXT NOT NULL DEFAULT 'YYYY-MM-DD',
     language TEXT NOT NULL DEFAULT 'bilingual',
-    profitFormula TEXT NOT NULL DEFAULT 'invoice_minus_real',
+    profitFormula TEXT NOT NULL DEFAULT 'invoice_minus_real_minus_parcel',
     remainingFormula TEXT NOT NULL DEFAULT 'invoice_plus_parcel_minus_vasool',
     naffaFormula TEXT NOT NULL DEFAULT 'proportional_invoice_capped',
     passwordEnabled INTEGER NOT NULL DEFAULT 0,
     passwordHash TEXT NOT NULL DEFAULT '',
     passwordSalt TEXT NOT NULL DEFAULT '',
     passwordConfigured INTEGER NOT NULL DEFAULT 0,
+    profitFormulaMigratedV2 INTEGER NOT NULL DEFAULT 0,
     lastBackupAt TEXT,
     updatedAt TEXT NOT NULL
   );
@@ -170,11 +171,17 @@ try {
   // column already exists
 }
 
+try {
+  db.exec('ALTER TABLE settings ADD COLUMN profitFormulaMigratedV2 INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // column already exists
+}
+
 function ensureDefaultSettings(): void {
   const existing = db
-    .prepare('SELECT id, passwordHash, passwordConfigured FROM settings WHERE id = ?')
+    .prepare('SELECT id, passwordHash, passwordConfigured, profitFormulaMigratedV2 FROM settings WHERE id = ?')
     .get('default') as
-    | { id: string; passwordHash: string; passwordConfigured: number }
+    | { id: string; passwordHash: string; passwordConfigured: number; profitFormulaMigratedV2: number }
     | undefined;
   if (!existing) {
     const salt = crypto.randomBytes(16).toString('hex');
@@ -184,20 +191,56 @@ function ensureDefaultSettings(): void {
         id, businessName, businessUrduName, businessPhone, businessEmail, businessAddress,
         businessLogo, currency, enableExchangeRate, exchangeRate, targetCurrency,
         dateFormat, language, profitFormula, remainingFormula, naffaFormula,
-        passwordEnabled, passwordHash, passwordSalt, passwordConfigured, lastBackupAt, updatedAt
+        passwordEnabled, passwordHash, passwordSalt, passwordConfigured, profitFormulaMigratedV2, lastBackupAt, updatedAt
       ) VALUES (
         'default', 'Sehat Ki Duniya', 'صحت کی دنیا', '', '', '',
         '', 'PKR', 0, 1, 'USD',
-        'YYYY-MM-DD', 'bilingual', 'invoice_minus_real', 'invoice_plus_parcel_minus_vasool', 'proportional_invoice_capped',
-        1, ?, ?, 1, NULL, ?
+        'YYYY-MM-DD', 'bilingual', 'invoice_minus_real_minus_parcel', 'invoice_plus_parcel_minus_vasool', 'proportional_invoice_capped',
+        1, ?, ?, 1, 1, NULL, ?
       )
     `).run(hash, salt, nowIso());
-  } else if (!existing.passwordConfigured && !existing.passwordHash) {
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = hashPassword('1231235', salt);
-    db.prepare(
-      'UPDATE settings SET passwordEnabled = 1, passwordHash = ?, passwordSalt = ?, passwordConfigured = 1, updatedAt = ? WHERE id = ?',
-    ).run(hash, salt, nowIso(), 'default');
+  } else {
+    if (!existing.passwordConfigured && !existing.passwordHash) {
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = hashPassword('1231235', salt);
+      db.prepare(
+        'UPDATE settings SET passwordEnabled = 1, passwordHash = ?, passwordSalt = ?, passwordConfigured = 1, updatedAt = ? WHERE id = ?',
+      ).run(hash, salt, nowIso(), 'default');
+    }
+    if (!existing.profitFormulaMigratedV2) {
+      db.transaction(() => {
+        db.prepare(
+          "UPDATE settings SET profitFormula = 'invoice_minus_real_minus_parcel', profitFormulaMigratedV2 = 1, updatedAt = ? WHERE id = ?",
+        ).run(nowIso(), 'default');
+        const settingsRow = db.prepare('SELECT * FROM settings WHERE id = ?').get('default') as SettingsRow;
+        const txRows = db.prepare('SELECT * FROM transactions').all() as Array<{
+          id: string;
+          realAmount: number;
+          invoiceAmount: number;
+          parcelCharges: number;
+          vasool: number;
+        }>;
+        const updateTx = db.prepare(
+          'UPDATE transactions SET profit = ?, naffaVasool = ?, remainingAmount = ?, updatedAt = ? WHERE id = ?',
+        );
+        for (const r of txRows) {
+          const metrics = calculateTransactionMetrics(
+            {
+              realAmount: r.realAmount,
+              invoiceAmount: r.invoiceAmount,
+              parcelCharges: r.parcelCharges,
+              vasool: r.vasool,
+            },
+            {
+              profitFormula: settingsRow.profitFormula,
+              remainingFormula: settingsRow.remainingFormula,
+              naffaFormula: settingsRow.naffaFormula,
+            },
+          );
+          updateTx.run(metrics.profit, metrics.naffaVasool, metrics.remainingAmount, nowIso(), r.id);
+        }
+      })();
+    }
   }
 }
 
@@ -474,7 +517,7 @@ async function createAppServer(): Promise<void> {
   // Bootstrap all core collections
   app.get('/api/bootstrap', requireAuth, (_req: Request, res: Response) => {
     const transactions = db
-      .prepare('SELECT * FROM transactions ORDER BY date DESC, serialNumber DESC')
+      .prepare('SELECT * FROM transactions ORDER BY serialNumber ASC')
       .all();
     const customers = db
       .prepare('SELECT * FROM customers ORDER BY name COLLATE NOCASE ASC')
@@ -503,7 +546,7 @@ async function createAppServer(): Promise<void> {
   // Transactions CRUD
   app.get('/api/transactions', requireAuth, (_req: Request, res: Response) => {
     const rows = db
-      .prepare('SELECT * FROM transactions ORDER BY date DESC, serialNumber DESC')
+      .prepare('SELECT * FROM transactions ORDER BY serialNumber ASC')
       .all();
     res.json(rows);
   });
