@@ -38,14 +38,21 @@ let backendAvailablePromise: Promise<boolean> | null = null;
 async function isBackendAvailable(): Promise<boolean> {
   if (backendAvailablePromise) return backendAvailablePromise;
   backendAvailablePromise = (async () => {
+    if (
+      typeof window !== 'undefined' &&
+      (window.location.hostname.endsWith('.github.io') ||
+        window.location.protocol === 'file:')
+    ) {
+      return false;
+    }
     try {
       const res = await fetch('/api/health', { cache: 'no-store' });
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok || !contentType.includes('application/json')) {
         return false;
       }
-      const json = (await res.json()) as { status?: string };
-      return json?.status === 'ok';
+      const json = (await res.json()) as { status?: string; database?: string };
+      return json?.status === 'ok' && json?.database === 'sqlite';
     } catch {
       return false;
     }

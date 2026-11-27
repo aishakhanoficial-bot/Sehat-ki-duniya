@@ -67,6 +67,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onUnlocked }) => {
             <input
               id="unlock-password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
