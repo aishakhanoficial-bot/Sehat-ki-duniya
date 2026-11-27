@@ -102,10 +102,38 @@ function createInitialDb(): LocalDatabase {
   };
 }
 
+const memoryStorageFallback: Record<string, string> = {};
+
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return memoryStorageFallback[key] ?? null;
+  }
+}
+
+function safeSetItem(key: string, value: string): void {
+  memoryStorageFallback[key] = value;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore storage restriction in sandboxed file/content viewers
+  }
+}
+
+function safeRemoveItem(key: string): void {
+  delete memoryStorageFallback[key];
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
 async function loadDb(): Promise<LocalDatabase> {
   let db: LocalDatabase;
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = safeGetItem(STORE_KEY);
     db = raw ? (JSON.parse(raw) as LocalDatabase) : createInitialDb();
   } catch {
     db = createInitialDb();
@@ -124,7 +152,7 @@ async function loadDb(): Promise<LocalDatabase> {
 }
 
 function saveDb(db: LocalDatabase): void {
-  localStorage.setItem(STORE_KEY, JSON.stringify(db));
+  safeSetItem(STORE_KEY, JSON.stringify(db));
 }
 
 function nextSerial(db: LocalDatabase): number {
@@ -193,7 +221,7 @@ export const localStore = {
     if (!db.settings.passwordEnabled) {
       return { passwordEnabled: false, authenticated: true };
     }
-    const token = localStorage.getItem(SESSION_KEY);
+    const token = safeGetItem(SESSION_KEY);
     return {
       passwordEnabled: true,
       authenticated: Boolean(token && token.length >= 16),
@@ -210,12 +238,12 @@ export const localStore = {
       throw new Error('Incorrect password');
     }
     const token = randomHex(24);
-    localStorage.setItem(SESSION_KEY, token);
+    safeSetItem(SESSION_KEY, token);
     return { ok: true, token };
   },
 
   async logout(): Promise<{ ok: boolean }> {
-    localStorage.removeItem(SESSION_KEY);
+    safeRemoveItem(SESSION_KEY);
     return { ok: true };
   },
 
@@ -247,7 +275,7 @@ export const localStore = {
       db.settings.updatedAt = new Date().toISOString();
       saveDb(db);
       const token = randomHex(24);
-      localStorage.setItem(SESSION_KEY, token);
+      safeSetItem(SESSION_KEY, token);
       return { ok: true, passwordEnabled: true, token };
     } else {
       db.passwordSalt = '';
@@ -256,7 +284,7 @@ export const localStore = {
       db.passwordConfigured = true;
       db.settings.updatedAt = new Date().toISOString();
       saveDb(db);
-      localStorage.removeItem(SESSION_KEY);
+      safeRemoveItem(SESSION_KEY);
       return { ok: true, passwordEnabled: false, token: null };
     }
   },

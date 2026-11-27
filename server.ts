@@ -374,6 +374,15 @@ async function createAppServer(): Promise<void> {
     res.json({ status: 'ok', database: 'sqlite' });
   });
 
+  app.get('/download/sehat-ki-duniya.html', (_req: Request, res: Response) => {
+    const filePath = path.join(__dirname, 'public', 'sehat-ki-duniya.html');
+    if (!fs.existsSync(filePath)) {
+      res.status(404).send('Standalone HTML file not generated yet.');
+      return;
+    }
+    res.download(filePath, 'sehat-ki-duniya.html');
+  });
+
   // Auth routes
   app.get('/api/auth/status', (req: Request, res: Response) => {
     const settings = getSettingsRow();

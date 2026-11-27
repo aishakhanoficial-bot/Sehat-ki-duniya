@@ -41,7 +41,7 @@ async function isBackendAvailable(): Promise<boolean> {
     if (
       typeof window !== 'undefined' &&
       (window.location.hostname.endsWith('.github.io') ||
-        window.location.protocol === 'file:')
+        (window.location.protocol !== 'http:' && window.location.protocol !== 'https:'))
     ) {
       return false;
     }
