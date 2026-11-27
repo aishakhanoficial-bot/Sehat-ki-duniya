@@ -404,7 +404,11 @@ export function downloadInvoicePdf(
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const c = settings.currency;
-  const totalAmount = tx.invoiceAmount + tx.parcelCharges;
+  const includeParcelInTotal =
+    settings.remainingFormula === 'invoice_plus_parcel_minus_vasool';
+  const totalAmount = includeParcelInTotal
+    ? tx.invoiceAmount + tx.parcelCharges
+    : tx.invoiceAmount;
 
   doc.setFillColor(6, 78, 59);
   doc.rect(0, 0, pageWidth, 88, 'F');
@@ -443,7 +447,10 @@ export function downloadInvoicePdf(
   }
   lineItems.push(['Invoice Amount', formatCurrency(tx.invoiceAmount, c)]);
   lineItems.push(['Parcel Charges', formatCurrency(tx.parcelCharges, c)]);
-  lineItems.push(['Total Amount (Invoice + Parcel)', formatCurrency(totalAmount, c)]);
+  lineItems.push([
+    includeParcelInTotal ? 'Total Amount (Invoice + Parcel)' : 'Total Amount (Invoice)',
+    formatCurrency(totalAmount, c),
+  ]);
   lineItems.push(['Paid Amount (Vasool)', formatCurrency(tx.vasool, c)]);
   lineItems.push(['Remaining Balance', formatCurrency(tx.remainingAmount, c)]);
 

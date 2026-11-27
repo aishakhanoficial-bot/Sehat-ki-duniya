@@ -104,13 +104,14 @@ db.exec(`
     dateFormat TEXT NOT NULL DEFAULT 'YYYY-MM-DD',
     language TEXT NOT NULL DEFAULT 'bilingual',
     profitFormula TEXT NOT NULL DEFAULT 'invoice_minus_real_minus_parcel',
-    remainingFormula TEXT NOT NULL DEFAULT 'invoice_plus_parcel_minus_vasool',
+    remainingFormula TEXT NOT NULL DEFAULT 'invoice_minus_vasool',
     naffaFormula TEXT NOT NULL DEFAULT 'proportional_invoice_capped',
     passwordEnabled INTEGER NOT NULL DEFAULT 0,
     passwordHash TEXT NOT NULL DEFAULT '',
     passwordSalt TEXT NOT NULL DEFAULT '',
     passwordConfigured INTEGER NOT NULL DEFAULT 0,
     profitFormulaMigratedV2 INTEGER NOT NULL DEFAULT 0,
+    remainingFormulaMigratedV3 INTEGER NOT NULL DEFAULT 0,
     lastBackupAt TEXT,
     updatedAt TEXT NOT NULL
   );
@@ -177,11 +178,23 @@ try {
   // column already exists
 }
 
+try {
+  db.exec('ALTER TABLE settings ADD COLUMN remainingFormulaMigratedV3 INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // column already exists
+}
+
 function ensureDefaultSettings(): void {
   const existing = db
-    .prepare('SELECT id, passwordHash, passwordConfigured, profitFormulaMigratedV2 FROM settings WHERE id = ?')
+    .prepare('SELECT id, passwordHash, passwordConfigured, profitFormulaMigratedV2, remainingFormulaMigratedV3 FROM settings WHERE id = ?')
     .get('default') as
-    | { id: string; passwordHash: string; passwordConfigured: number; profitFormulaMigratedV2: number }
+    | {
+        id: string;
+        passwordHash: string;
+        passwordConfigured: number;
+        profitFormulaMigratedV2: number;
+        remainingFormulaMigratedV3: number;
+      }
     | undefined;
   if (!existing) {
     const salt = crypto.randomBytes(16).toString('hex');
@@ -191,12 +204,12 @@ function ensureDefaultSettings(): void {
         id, businessName, businessUrduName, businessPhone, businessEmail, businessAddress,
         businessLogo, currency, enableExchangeRate, exchangeRate, targetCurrency,
         dateFormat, language, profitFormula, remainingFormula, naffaFormula,
-        passwordEnabled, passwordHash, passwordSalt, passwordConfigured, profitFormulaMigratedV2, lastBackupAt, updatedAt
+        passwordEnabled, passwordHash, passwordSalt, passwordConfigured, profitFormulaMigratedV2, remainingFormulaMigratedV3, lastBackupAt, updatedAt
       ) VALUES (
         'default', 'Sehat Ki Duniya', 'صحت کی دنیا', '', '', '',
         '', 'PKR', 0, 1, 'USD',
-        'YYYY-MM-DD', 'bilingual', 'invoice_minus_real_minus_parcel', 'invoice_plus_parcel_minus_vasool', 'proportional_invoice_capped',
-        1, ?, ?, 1, 1, NULL, ?
+        'YYYY-MM-DD', 'bilingual', 'invoice_minus_real_minus_parcel', 'invoice_minus_vasool', 'proportional_invoice_capped',
+        1, ?, ?, 1, 1, 1, NULL, ?
       )
     `).run(hash, salt, nowIso());
   } else {
@@ -207,11 +220,18 @@ function ensureDefaultSettings(): void {
         'UPDATE settings SET passwordEnabled = 1, passwordHash = ?, passwordSalt = ?, passwordConfigured = 1, updatedAt = ? WHERE id = ?',
       ).run(hash, salt, nowIso(), 'default');
     }
-    if (!existing.profitFormulaMigratedV2) {
+    if (!existing.profitFormulaMigratedV2 || !existing.remainingFormulaMigratedV3) {
       db.transaction(() => {
-        db.prepare(
-          "UPDATE settings SET profitFormula = 'invoice_minus_real_minus_parcel', profitFormulaMigratedV2 = 1, updatedAt = ? WHERE id = ?",
-        ).run(nowIso(), 'default');
+        if (!existing.profitFormulaMigratedV2) {
+          db.prepare(
+            "UPDATE settings SET profitFormula = 'invoice_minus_real_minus_parcel', profitFormulaMigratedV2 = 1, updatedAt = ? WHERE id = ?",
+          ).run(nowIso(), 'default');
+        }
+        if (!existing.remainingFormulaMigratedV3) {
+          db.prepare(
+            "UPDATE settings SET remainingFormula = 'invoice_minus_vasool', remainingFormulaMigratedV3 = 1, updatedAt = ? WHERE id = ?",
+          ).run(nowIso(), 'default');
+        }
         const settingsRow = db.prepare('SELECT * FROM settings WHERE id = ?').get('default') as SettingsRow;
         const txRows = db.prepare('SELECT * FROM transactions').all() as Array<{
           id: string;

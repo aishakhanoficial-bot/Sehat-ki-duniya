@@ -43,7 +43,13 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     );
   }, [transactions, filteredList, selectedTransactionId]);
 
-  const totalAmount = activeTx ? activeTx.invoiceAmount + activeTx.parcelCharges : 0;
+  const includeParcelInTotal =
+    settings.remainingFormula === 'invoice_plus_parcel_minus_vasool';
+  const totalAmount = activeTx
+    ? includeParcelInTotal
+      ? activeTx.invoiceAmount + activeTx.parcelCharges
+      : activeTx.invoiceAmount
+    : 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -96,7 +102,10 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                   <div className="mt-1 flex items-center justify-between text-xs">
                     <span className="font-medium text-slate-700 truncate">{tx.customerName}</span>
                     <span className="font-mono-num font-semibold text-slate-900">
-                      {formatCurrency(tx.invoiceAmount + tx.parcelCharges, c)}
+                      {formatCurrency(
+                        includeParcelInTotal ? tx.invoiceAmount + tx.parcelCharges : tx.invoiceAmount,
+                        c,
+                      )}
                     </span>
                   </div>
                 </button>

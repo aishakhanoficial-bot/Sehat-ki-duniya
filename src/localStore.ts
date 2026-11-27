@@ -33,6 +33,7 @@ interface LocalDatabase {
   passwordSalt: string;
   passwordConfigured: boolean;
   profitFormulaMigratedV2?: boolean;
+  remainingFormulaMigratedV3?: boolean;
   backups: LocalBackupEntry[];
 }
 
@@ -90,7 +91,7 @@ function createInitialDb(): LocalDatabase {
       dateFormat: 'YYYY-MM-DD',
       language: 'bilingual',
       profitFormula: 'invoice_minus_real_minus_parcel',
-      remainingFormula: 'invoice_plus_parcel_minus_vasool',
+      remainingFormula: 'invoice_minus_vasool',
       naffaFormula: 'proportional_invoice_capped',
       passwordEnabled: true,
       lastBackupAt: null,
@@ -100,6 +101,7 @@ function createInitialDb(): LocalDatabase {
     passwordSalt: '',
     passwordConfigured: false,
     profitFormulaMigratedV2: true,
+    remainingFormulaMigratedV3: true,
     backups: [],
   };
 }
@@ -151,8 +153,15 @@ async function loadDb(): Promise<LocalDatabase> {
     changed = true;
   }
 
-  if (!db.profitFormulaMigratedV2) {
-    db.settings.profitFormula = 'invoice_minus_real_minus_parcel';
+  if (!db.profitFormulaMigratedV2 || !db.remainingFormulaMigratedV3) {
+    if (!db.profitFormulaMigratedV2) {
+      db.settings.profitFormula = 'invoice_minus_real_minus_parcel';
+      db.profitFormulaMigratedV2 = true;
+    }
+    if (!db.remainingFormulaMigratedV3) {
+      db.settings.remainingFormula = 'invoice_minus_vasool';
+      db.remainingFormulaMigratedV3 = true;
+    }
     const ts = new Date().toISOString();
     for (const tx of db.transactions) {
       const metrics = calculateTransactionMetrics(
@@ -173,7 +182,6 @@ async function loadDb(): Promise<LocalDatabase> {
       tx.remainingAmount = metrics.remainingAmount;
       tx.updatedAt = ts;
     }
-    db.profitFormulaMigratedV2 = true;
     changed = true;
   }
 

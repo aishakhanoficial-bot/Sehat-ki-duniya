@@ -444,11 +444,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(e) => setRemainingFormula(e.target.value as RemainingFormula)}
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
               >
-                <option value="invoice_plus_parcel_minus_vasool">
-                  Invoice + Parcel − Vasool (Default)
-                </option>
                 <option value="invoice_minus_vasool">
-                  Invoice − Vasool
+                  Invoice − Vasool (Default)
+                </option>
+                <option value="invoice_plus_parcel_minus_vasool">
+                  Invoice + Parcel − Vasool
                 </option>
               </select>
             </div>
