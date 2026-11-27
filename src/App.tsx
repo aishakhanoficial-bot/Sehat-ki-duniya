@@ -508,6 +508,28 @@ export default function App() {
             </>
           )}
         </main>
+
+        <footer className="mt-auto border-t border-slate-200 bg-white px-4 sm:px-6 py-4 no-print">
+          <div className="max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600">
+            <span>
+              {settings.businessName} · <span className="font-urdu">{settings.businessUrduName}</span>
+            </span>
+            <div className="flex flex-wrap items-center justify-center gap-2 text-center">
+              <span>
+                Designed and developed by <strong className="font-semibold text-slate-900">Ayesha Khan</strong>
+              </span>
+              <span aria-hidden="true" className="text-slate-300">·</span>
+              <a
+                href="https://wa.me/923470256011"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono-num font-medium text-emerald-800 hover:text-emerald-950 hover:underline"
+              >
+                WhatsApp +923470256011
+              </a>
+            </div>
+          </div>
+        </footer>
       </div>
 
       {/* Mobile Bottom Navigation */}
