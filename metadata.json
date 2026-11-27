@@ -1,0 +1,6 @@
+{
+  "name": "Sehat Ki Duniya – Smart Business Accounting",
+  "description": "Smart business accounting, daily entries, parcel tracking, invoice management, and monthly financial reporting for Sehat Ki Duniya (صحت کی دنیا).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
